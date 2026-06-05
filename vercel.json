@@ -1,0 +1,17 @@
+{
+  "buildCommand": "npm run vercel-build",
+  "outputDirectory": "frontend/dist",
+  "installCommand": "npm install",
+  "framework": null,
+  "functions": {
+    "api/[[...path]].js": {
+      "memory": 1024,
+      "maxDuration": 10,
+      "includeFiles": ["backend/dist/**", "backend/node_modules/**"]
+    }
+  },
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/:path*" },
+    { "source": "/((?!assets/|favicon\\.svg|\\.css|\\.js|\\.png|\\.jpg|\\.ico).*)", "destination": "/index.html" }
+  ]
+}

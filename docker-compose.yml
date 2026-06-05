@@ -1,0 +1,29 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: intern_nav_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: intern_admin
+      POSTGRES_PASSWORD: intern_pass_2024
+      POSTGRES_DB: intern_nav
+    ports:
+      - '5432:5432'
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: intern_nav_cache
+    restart: unless-stopped
+    command: redis-server --requirepass redis_pass_2024
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+
+volumes:
+  pg_data:
+  redis_data:
