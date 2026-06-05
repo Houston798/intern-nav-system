@@ -377,7 +377,7 @@ router.get('/mentor/interns', authMiddleware, async (req: AuthRequest, res: Resp
     ).all(mentorId, mentorDept)
   }
 
-  const result = []
+  const result: any[] = []
   for (const intern of interns) {
     const dept = intern.department
     const totalRow = await db.prepare(
