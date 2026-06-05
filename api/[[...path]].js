@@ -10,8 +10,6 @@ if (!process.env.JWT_SECRET) {
 }
 process.env.NODE_ENV = 'production'
 
-// ── 导出 Express 应用 ──
-// 注意：种子数据通过 Supabase SQL Editor 执行 supabase/schema.sql + seed.sql 导入
-// 不再在 serverless 函数中执行数据库初始化
+// ── 导出 Express 应用（通过 Vercel Node.js helper 包装） ──
 const app = require('../backend/dist/app').default
 module.exports = app
