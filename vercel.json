@@ -7,7 +7,7 @@
     "api/[[...path]].js": {
       "memory": 1024,
       "maxDuration": 10,
-      "includeFiles": ["backend/dist/**", "backend/node_modules/**"]
+      "includeFiles": "backend/dist/** backend/node_modules/**"
     }
   },
   "rewrites": [
