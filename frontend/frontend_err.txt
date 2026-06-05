@@ -1,8 +1,0 @@
-﻿src/pages/MentorInternDetail.tsx(250,30): error TS18047: 'data' is possibly 'null'.
-src/pages/MentorPanel.tsx(367,48): error TS2322: Type 'null' is not assignable to type 'number | undefined'.
-src/pages/MentorProgress.tsx(90,8): error TS2322: Type '{ children: (false | Element)[]; title: string; subtitle: string; }' is not assignable to type 'IntrinsicAttributes & { title: string; subtitle?: string | undefined; action?: ReactNode; breadcrumb?: { label: string; path?: string | undefined; }[] | undefined; }'.
-  Property 'children' does not exist on type 'IntrinsicAttributes & { title: string; subtitle?: string | undefined; action?: ReactNode; breadcrumb?: { label: string; path?: string | undefined; }[] | undefined; }'.
-src/pages/SkillManage.tsx(445,8): error TS2322: Type '{ children: Element; title: string; subtitle: string; }' is not assignable to type 'IntrinsicAttributes & { title: string; subtitle?: string | undefined; action?: ReactNode; breadcrumb?: { label: string; path?: string | undefined; }[] | undefined; }'.
-  Property 'children' does not exist on type 'IntrinsicAttributes & { title: string; subtitle?: string | undefined; action?: ReactNode; breadcrumb?: { label: string; path?: string | undefined; }[] | undefined; }'.
-src/pages/SkillTree.tsx(272,8): error TS2322: Type '{ children: false | Element; title: string; subtitle: string; }' is not assignable to type 'IntrinsicAttributes & { title: string; subtitle?: string | undefined; action?: ReactNode; breadcrumb?: { label: string; path?: string | undefined; }[] | undefined; }'.
-  Property 'children' does not exist on type 'IntrinsicAttributes & { title: string; subtitle?: string | undefined; action?: ReactNode; breadcrumb?: { label: string; path?: string | undefined; }[] | undefined; }'.
