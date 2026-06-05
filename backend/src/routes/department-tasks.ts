@@ -20,11 +20,7 @@ type DeptTaskRow = {
   updated_at: string
 }
 
-// ═══════════════════════════════════════════════════
-//  GET /api/department-tasks
-//  按部门获取共享任务 — 同部门实习生可见全部
-// ═══════════════════════════════════════════════════
-router.get('/', authMiddleware, (req: AuthRequest, res: Response) => {
+router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
   const { role, department: userDept, id: userId } = req.user!
   const { department, status } = req.query
 
@@ -32,13 +28,11 @@ router.get('/', authMiddleware, (req: AuthRequest, res: Response) => {
   let params: any[] = []
 
   if (role === 'intern') {
-    // 实习生只能看自己部门的任务
     if (!userDept) return res.json([])
     conditions.push('dt.department = ?')
     params.push(userDept)
     conditions.push("dt.status = 'active'")
   } else if (role === 'mentor') {
-    // 导师看自己部门的（包括已归档）
     if (!userDept && !department) return res.json([])
     if (department) {
       conditions.push('dt.department = ?')
@@ -73,27 +67,19 @@ router.get('/', authMiddleware, (req: AuthRequest, res: Response) => {
   query += ' ORDER BY dt.order_index, dt.created_at DESC'
 
   const result = params.length > 0
-    ? db.prepare(query).all(...params)
-    : db.prepare(query).all()
+    ? await db.prepare(query).all(...params)
+    : await db.prepare(query).all()
   res.json(result)
 })
 
-// ═══════════════════════════════════════════════════
-//  GET /api/department-tasks/departments
-//  获取有部门任务的部门列表
-// ═══════════════════════════════════════════════════
-router.get('/departments', authMiddleware, (_req, res: Response) => {
-  const rows = db.prepare(
+router.get('/departments', authMiddleware, async (_req, res: Response) => {
+  const rows = await db.prepare(
     "SELECT DISTINCT department FROM department_tasks WHERE department IS NOT NULL AND department != '' ORDER BY department"
   ).all() as { department: string }[]
   res.json(rows.map(r => r.department))
 })
 
-// ═══════════════════════════════════════════════════
-//  POST /api/department-tasks
-//  导师/HR 创建部门共享任务（可从技能树快速发布）
-// ═══════════════════════════════════════════════════
-router.post('/', authMiddleware, (req: AuthRequest, res: Response) => {
+router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
   if (req.user?.role !== 'mentor' && req.user?.role !== 'hr') {
     return res.status(403).json({ error: '仅导师和 HR 可创建部门任务' })
   }
@@ -107,7 +93,6 @@ router.post('/', authMiddleware, (req: AuthRequest, res: Response) => {
     return res.status(400).json({ error: '所属部门不能为空' })
   }
 
-  // 导师只能为自己部门的实习生创建部门任务
   if (req.user?.role === 'mentor') {
     if (req.user.department && department.trim() !== req.user.department) {
       return res.status(403).json({ error: `仅可为自己部门(${req.user.department})创建部门任务` })
@@ -118,12 +103,12 @@ router.post('/', authMiddleware, (req: AuthRequest, res: Response) => {
   const id = randomUUID()
   const orderIdx = typeof order_index === 'number' ? order_index : 0
 
-  db.prepare(
+  await db.prepare(
     `INSERT INTO department_tasks (id, title, description, department, category, skill_source_id, created_by, due_date, status, order_index)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`
   ).run(id, title.trim(), description || '', department.trim(), cat, skill_source_id || null, req.user!.id, due_date || null, orderIdx)
 
-  const created = db.prepare(
+  const created = await db.prepare(
     `SELECT dt.*, u.name as creator_name
      FROM department_tasks dt
      LEFT JOIN users u ON u.id = dt.created_by
@@ -133,11 +118,7 @@ router.post('/', authMiddleware, (req: AuthRequest, res: Response) => {
   res.status(201).json(created)
 })
 
-// ═══════════════════════════════════════════════════
-//  POST /api/department-tasks/batch-from-skills
-//  从技能树节点批量创建部门共享任务（一键发布）
-// ═══════════════════════════════════════════════════
-router.post('/batch-from-skills', authMiddleware, (req: AuthRequest, res: Response) => {
+router.post('/batch-from-skills', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     if (req.user?.role !== 'mentor' && req.user?.role !== 'hr') {
       return res.status(403).json({ error: '仅导师和 HR 可发布部门任务' })
@@ -149,20 +130,17 @@ router.post('/batch-from-skills', authMiddleware, (req: AuthRequest, res: Respon
       return res.status(400).json({ error: '请选择部门和技能节点' })
     }
 
-    // 导师只能为自己部门发布
     if (req.user?.role === 'mentor' && req.user?.department && targetDept !== req.user.department) {
       return res.status(403).json({ error: `仅可为自己部门(${req.user.department})发布部门任务` })
     }
 
-    // 获取技能节点（使用 SELECT * 避免 schema 变动导致 500）
     const skillPlaceholders = skillIds.map(() => '?').join(',')
-    const skills = db.prepare(
+    const skills = await db.prepare(
       `SELECT * FROM skills WHERE id IN (${skillPlaceholders})`
     ).all(...skillIds) as any[]
 
     if (skills.length === 0) return res.status(404).json({ error: '未找到任何有效技能节点' })
 
-    // 过滤非叶子节点
     const validSkills = skills.filter(s => {
       const childCount = (db.prepare('SELECT COUNT(*) as cnt FROM skills WHERE parent_id = ?').get(s.id) as any)?.cnt || 0
       return childCount === 0
@@ -172,7 +150,6 @@ router.post('/batch-from-skills', authMiddleware, (req: AuthRequest, res: Respon
       return res.status(400).json({ error: '所选节点均为分类标题，请选择具体技能子节点发布' })
     }
 
-    // 技能部门检查
     const wrongDept = validSkills.filter(s => s.department && s.department !== targetDept)
     if (wrongDept.length > 0) {
       return res.status(400).json({
@@ -183,17 +160,15 @@ router.post('/batch-from-skills', authMiddleware, (req: AuthRequest, res: Respon
     let created = 0
     let skipped = 0
 
-    // 使用 try-catch 包裹事务，避免 SQL 错误导致 500
-    const transaction = db.transaction(() => {
+    const transaction = db.transaction(async () => {
       for (const skill of validSkills) {
-        // 去重
-        const existing = db.prepare(
+        const existing = await db.prepare(
           "SELECT id FROM department_tasks WHERE department = ? AND skill_source_id = ? AND status = 'active'"
         ).get(targetDept, skill.id)
         if (existing) { skipped++; continue }
 
         const id = randomUUID()
-        db.prepare(
+        await db.prepare(
           `INSERT INTO department_tasks (id, title, description, department, category, skill_source_id, created_by, due_date, status)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')`
         ).run(id, skill.name, skill.description || '', targetDept, (skill.category || 'department'), skill.id, req.user!.id, due_date || null)
@@ -201,7 +176,7 @@ router.post('/batch-from-skills', authMiddleware, (req: AuthRequest, res: Respon
       }
     })
 
-    transaction()
+    await transaction()
 
     res.status(201).json({
       success: true,
@@ -216,19 +191,14 @@ router.post('/batch-from-skills', authMiddleware, (req: AuthRequest, res: Respon
   }
 })
 
-// ═══════════════════════════════════════════════════
-//  PUT /api/department-tasks/:id
-//  更新部门共享任务
-// ═══════════════════════════════════════════════════
-router.put('/:id', authMiddleware, (req: AuthRequest, res: Response) => {
+router.put('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
   if (req.user?.role !== 'mentor' && req.user?.role !== 'hr') {
     return res.status(403).json({ error: '仅导师和 HR 可编辑部门任务' })
   }
 
-  const existing = db.prepare('SELECT * FROM department_tasks WHERE id = ?').get(req.params.id) as DeptTaskRow
+  const existing = await db.prepare('SELECT * FROM department_tasks WHERE id = ?').get(req.params.id) as DeptTaskRow
   if (!existing) return res.status(404).json({ error: '部门任务不存在' })
 
-  // 只能编辑自己部门的任务（HR 除外）
   if (req.user?.role === 'mentor' && req.user?.department && existing.department !== req.user.department) {
     return res.status(403).json({ error: '仅可编辑本部门的任务' })
   }
@@ -252,12 +222,12 @@ router.put('/:id', authMiddleware, (req: AuthRequest, res: Response) => {
   }
 
   if (updates.length > 0) {
-    updates.push("updated_at = datetime('now')")
+    updates.push("updated_at = NOW()")
     params.push(req.params.id)
-    db.prepare(`UPDATE department_tasks SET ${updates.join(', ')} WHERE id = ?`).run(...params)
+    await db.prepare(`UPDATE department_tasks SET ${updates.join(', ')} WHERE id = ?`).run(...params)
   }
 
-  const updated = db.prepare(
+  const updated = await db.prepare(
     `SELECT dt.*, u.name as creator_name
      FROM department_tasks dt
      LEFT JOIN users u ON u.id = dt.created_by
@@ -267,26 +237,21 @@ router.put('/:id', authMiddleware, (req: AuthRequest, res: Response) => {
   res.json(updated)
 })
 
-// ═══════════════════════════════════════════════════
-//  DELETE /api/department-tasks/:id
-//  删除部门共享任务
-// ═══════════════════════════════════════════════════
-router.delete('/:id', authMiddleware, (req: AuthRequest, res: Response) => {
+router.delete('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
   if (req.user?.role !== 'mentor' && req.user?.role !== 'hr') {
     return res.status(403).json({ error: '仅导师和 HR 可删除部门任务' })
   }
 
-  const existing = db.prepare('SELECT * FROM department_tasks WHERE id = ?').get(req.params.id) as DeptTaskRow
+  const existing = await db.prepare('SELECT * FROM department_tasks WHERE id = ?').get(req.params.id) as DeptTaskRow
   if (!existing) return res.status(404).json({ error: '部门任务不存在' })
 
   if (req.user?.role === 'mentor') {
-    // 导师只能删自己创建的 或 自己部门的
     if (existing.created_by !== req.user?.id && req.user?.department !== existing.department) {
       return res.status(403).json({ error: '仅可删除自己创建或本部门的任务' })
     }
   }
 
-  db.prepare('DELETE FROM department_tasks WHERE id = ?').run(req.params.id)
+  await db.prepare('DELETE FROM department_tasks WHERE id = ?').run(req.params.id)
   res.json({ success: true, message: `已删除「${existing.title}」` })
 })
 

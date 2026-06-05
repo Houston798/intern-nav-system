@@ -5,16 +5,12 @@ import { randomUUID } from 'crypto'
 
 const router = Router()
 
-// ══════════════════════════════════════════
-//  GET /api/user-skill-tasks/:skillId
-//  获取当前用户在某技能节点下的所有自定义任务
-// ══════════════════════════════════════════
-router.get('/:skillId', authMiddleware, (req: AuthRequest, res: Response) => {
+router.get('/:skillId', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id
     const skillId = req.params.skillId
 
-    const tasks = db.prepare(
+    const tasks = await db.prepare(
       `SELECT * FROM user_skill_tasks
        WHERE user_id = ? AND skill_id = ?
        ORDER BY order_index, created_at DESC`
@@ -27,11 +23,7 @@ router.get('/:skillId', authMiddleware, (req: AuthRequest, res: Response) => {
   }
 })
 
-// ══════════════════════════════════════════
-//  GET /api/user-skill-tasks
-//  获取当前用户所有自定义任务（可按状态过滤）
-// ══════════════════════════════════════════
-router.get('/', authMiddleware, (req: AuthRequest, res: Response) => {
+router.get('/', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id
     const status = req.query.status as string | undefined
@@ -48,7 +40,7 @@ router.get('/', authMiddleware, (req: AuthRequest, res: Response) => {
     }
 
     query += ' ORDER BY ust.created_at DESC'
-    const tasks = db.prepare(query).all(...params)
+    const tasks = await db.prepare(query).all(...params)
     res.json(tasks)
   } catch (err: any) {
     console.error('[user-skill-tasks list] 错误:', err?.message || err)
@@ -56,11 +48,7 @@ router.get('/', authMiddleware, (req: AuthRequest, res: Response) => {
   }
 })
 
-// ══════════════════════════════════════════
-//  POST /api/user-skill-tasks
-//  创建自定义任务（挂载在技能节点下）
-// ══════════════════════════════════════════
-router.post('/', authMiddleware, (req: AuthRequest, res: Response) => {
+router.post('/', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id
     const { skillId, title, description, due_date } = req.body
@@ -69,30 +57,27 @@ router.post('/', authMiddleware, (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: '技能节点和任务标题不能为空' })
     }
 
-    // 验证技能节点存在
-    const skill = db.prepare('SELECT id, name, department FROM skills WHERE id = ?').get(skillId) as any
+    const skill = await db.prepare('SELECT id, name, department FROM skills WHERE id = ?').get(skillId) as any
     if (!skill) return res.status(404).json({ error: '技能节点不存在' })
 
-    // 检查是否为叶子节点（只允许在叶子技能下创建任务）
-    const childCount = (db.prepare(
+    const childCount = (await db.prepare(
       'SELECT COUNT(*) as cnt FROM skills WHERE parent_id = ?'
     ).get(skillId) as any)?.cnt || 0
     if (childCount > 0) {
       return res.status(400).json({ error: '请在具体技能子节点下创建任务，不能选分类标题' })
     }
 
-    // 获取排序索引
-    const maxOrder = (db.prepare(
+    const maxOrder = (await db.prepare(
       'SELECT COALESCE(MAX(order_index), -1) as max_order FROM user_skill_tasks WHERE user_id = ? AND skill_id = ?'
     ).get(userId, skillId) as any)?.max_order ?? -1
 
     const id = randomUUID()
-    db.prepare(
+    await db.prepare(
       `INSERT INTO user_skill_tasks (id, user_id, skill_id, title, description, status, due_date, order_index)
        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`
     ).run(id, userId, skillId, title.trim(), description || '', due_date || null, maxOrder + 1)
 
-    const created = db.prepare('SELECT * FROM user_skill_tasks WHERE id = ?').get(id)
+    const created = await db.prepare('SELECT * FROM user_skill_tasks WHERE id = ?').get(id)
     res.status(201).json({ ...created as any, skill_name: skill.name })
   } catch (err: any) {
     console.error('[user-skill-tasks POST] 错误:', err?.message || err)
@@ -100,16 +85,12 @@ router.post('/', authMiddleware, (req: AuthRequest, res: Response) => {
   }
 })
 
-// ══════════════════════════════════════════
-//  PUT /api/user-skill-tasks/:id
-//  更新自定义任务（标题/描述/状态/截止日期）
-// ══════════════════════════════════════════
-router.put('/:id', authMiddleware, (req: AuthRequest, res: Response) => {
+router.put('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id
     const taskId = req.params.id
 
-    const existing = db.prepare(
+    const existing = await db.prepare(
       'SELECT * FROM user_skill_tasks WHERE id = ? AND user_id = ?'
     ).get(taskId, userId) as any
     if (!existing) return res.status(404).json({ error: '任务不存在' })
@@ -125,13 +106,13 @@ router.put('/:id', authMiddleware, (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: '状态必须为 pending/in_progress/completed' })
     }
 
-    db.prepare(
+    await db.prepare(
       `UPDATE user_skill_tasks
-       SET title=?, description=?, status=?, due_date=?, order_index=?, updated_at=datetime('now')
+       SET title=?, description=?, status=?, due_date=?, order_index=?, updated_at=NOW()
        WHERE id=? AND user_id=?`
     ).run(newTitle, newDesc, newStatus, newDue, newOrder, taskId, userId)
 
-    const updated = db.prepare('SELECT * FROM user_skill_tasks WHERE id = ?').get(taskId)
+    const updated = await db.prepare('SELECT * FROM user_skill_tasks WHERE id = ?').get(taskId)
     res.json(updated)
   } catch (err: any) {
     console.error('[user-skill-tasks PUT] 错误:', err?.message || err)
@@ -139,21 +120,17 @@ router.put('/:id', authMiddleware, (req: AuthRequest, res: Response) => {
   }
 })
 
-// ══════════════════════════════════════════
-//  DELETE /api/user-skill-tasks/:id
-//  删除自定义任务
-// ══════════════════════════════════════════
-router.delete('/:id', authMiddleware, (req: AuthRequest, res: Response) => {
+router.delete('/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id
     const taskId = req.params.id
 
-    const existing = db.prepare(
+    const existing = await db.prepare(
       'SELECT id FROM user_skill_tasks WHERE id = ? AND user_id = ?'
     ).get(taskId, userId)
     if (!existing) return res.status(404).json({ error: '任务不存在' })
 
-    db.prepare('DELETE FROM user_skill_tasks WHERE id = ? AND user_id = ?').run(taskId, userId)
+    await db.prepare('DELETE FROM user_skill_tasks WHERE id = ? AND user_id = ?').run(taskId, userId)
     res.json({ success: true, id: taskId })
   } catch (err: any) {
     console.error('[user-skill-tasks DELETE] 错误:', err?.message || err)

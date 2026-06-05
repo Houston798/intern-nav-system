@@ -58,34 +58,28 @@ router.post('/chat', authMiddleware, async (req: AuthRequest, res) => {
     const userId = req.user?.id
     const department = req.user?.role === 'mentor' ? '商务' : 'default'
 
-    // 保存用户消息
-    db.prepare('INSERT INTO ai_conversations (id, user_id, role, content) VALUES (?, ?, ?, ?)')
+    await db.prepare('INSERT INTO ai_conversations (id, user_id, role, content) VALUES (?, ?, ?, ?)')
       .run(randomUUID(), userId, 'user', message)
 
-    // 获取最近对话历史作为上下文（最多 10 条）
-    const history = db.prepare(
+    const history = await db.prepare(
       'SELECT role, content FROM ai_conversations WHERE user_id = ? ORDER BY created_at DESC LIMIT 10'
     ).all(userId) as Message[]
     history.reverse()
 
-    // 构建消息列表
     const systemPrompt = DEPT_PROMPTS[department] || DEPT_PROMPTS.default
     const messages: Message[] = [
       { role: 'system', content: systemPrompt },
       ...history.map(h => ({ role: h.role, content: h.content })),
     ]
 
-    // 调用 DeepSeek API
     const reply = await callDeepSeek(messages)
 
-    // 保存 AI 回复
-    db.prepare('INSERT INTO ai_conversations (id, user_id, role, content) VALUES (?, ?, ?, ?)')
+    await db.prepare('INSERT INTO ai_conversations (id, user_id, role, content) VALUES (?, ?, ?, ?)')
       .run(randomUUID(), userId, 'assistant', reply)
 
     res.json({ reply })
   } catch (error: any) {
     console.error('[AI Chat Error]', error.message)
-    // 降级：如果 API 不可用，返回提示而不是 500
     res.json({ reply: `AI 服务暂时不可用：${error.message}，请稍后重试。` })
   }
 })

@@ -77,7 +77,7 @@ function validateInviteKey(key: unknown): string | null {
 }
 
 function validateDate(field: string, date: unknown): string | null {
-  if (date === null || date === undefined || date === '') return null // 可选字段
+  if (date === null || date === undefined || date === '') return null
   if (typeof date !== 'string' || !DATE_RE.test(date)) return `${field}格式不正确（YYYY-MM-DD）`
   const d = new Date(date + 'T00:00:00Z')
   if (isNaN(d.getTime())) return `${field}不是有效日期`
@@ -101,7 +101,7 @@ function createToken(payload: { id: string; role: string; name: string; departme
 }
 
 // ── POST /api/auth/register ─────────────────────────
-router.post('/register', (req: Request, res: Response) => {
+router.post('/register', async (req: Request, res: Response) => {
   try {
     const { email, password, name, role, inviteKey, department, internStartDate, internEndDate } = req.body ?? {}
     const missing: string[] = []
@@ -116,12 +116,10 @@ router.post('/register', (req: Request, res: Response) => {
 
     const trimmedRole = role.trim()
 
-    // 实习生和导师必须选择部门
     if ((trimmedRole === 'intern' || trimmedRole === 'mentor') && (!department || !(department as string).trim())) {
       return res.status(400).json({ error: `${trimmedRole === 'intern' ? '实习生' : '导师'}必须选择部门`, code: ErrCode.MISSING_FIELDS, fields: ['department'] })
     }
 
-    // 实习生验证实习时间
     const startDate = internStartDate?.trim() || null
     const endDate = internEndDate?.trim() || null
     if (trimmedRole === 'intern') {
@@ -151,12 +149,12 @@ router.post('/register', (req: Request, res: Response) => {
     const keyErr = validateInviteKey(inviteKey)
     if (keyErr) return res.status(400).json({ error: keyErr, code: ErrCode.INVALID_KEY })
 
-    const exists = db.prepare('SELECT id FROM users WHERE email = ?').all(email.trim().toLowerCase()) as any[]
+    const exists = await db.prepare('SELECT id FROM users WHERE email = ?').all(email.trim().toLowerCase()) as any[]
     if (exists.length > 0) {
       return res.status(409).json({ error: '该邮箱已被注册', code: ErrCode.EMAIL_TAKEN })
     }
 
-    const keyRows = db.prepare('SELECT * FROM invite_keys WHERE key_value = ?').all(inviteKey.trim()) as any[]
+    const keyRows = await db.prepare('SELECT * FROM invite_keys WHERE key_value = ?').all(inviteKey.trim()) as any[]
     if (keyRows.length === 0) {
       return res.status(400).json({ error: '邀请密钥不存在，请联系 HR 获取有效密钥', code: ErrCode.INVALID_KEY })
     }
@@ -185,17 +183,17 @@ router.post('/register', (req: Request, res: Response) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
     const markKey = db.prepare(
-      `UPDATE invite_keys SET used_by = ?, used_at = datetime('now') WHERE key_value = ? AND used_by IS NULL`
+      `UPDATE invite_keys SET used_by = ?, used_at = NOW() WHERE key_value = ? AND used_by IS NULL`
     )
 
-    const transaction = db.transaction(() => {
-      insertUser.run(userId, normalizedEmail, passwordHash, trimmedName, trimmedRole, trimmedDept, startDate, endDate)
-      const keyUpdateResult = markKey.run(userId, trimmedKey)
+    const transaction = db.transaction(async () => {
+      await insertUser.run(userId, normalizedEmail, passwordHash, trimmedName, trimmedRole, trimmedDept, startDate, endDate)
+      const keyUpdateResult = await markKey.run(userId, trimmedKey)
       if (keyUpdateResult.changes === 0) throw new Error('KEY_RACE_CONDITION')
     })
 
     try {
-      transaction()
+      await transaction()
     } catch (txErr: any) {
       if (txErr.message === 'KEY_RACE_CONDITION') {
         return res.status(409).json({ error: '邀请密钥已被他人使用', code: ErrCode.KEY_ALREADY_USED })
@@ -203,18 +201,17 @@ router.post('/register', (req: Request, res: Response) => {
       throw txErr
     }
 
-    const user = db.prepare(
+    const user = await db.prepare(
       'SELECT id, role, name, email, department, intern_start_date, intern_end_date FROM users WHERE id = ?'
     ).get(userId) as any
-    // 查询入职引导完成状态
-    const onboardingRow = db.prepare('SELECT completed_at FROM onboarding_progress WHERE user_id = ?').get(userId) as any
+    const onboardingRow = await db.prepare('SELECT completed_at FROM onboarding_progress WHERE user_id = ?').get(userId) as any
     ;(user as any).onboarding_completed = !!onboardingRow?.completed_at
 
     const token = createToken({ id: user.id, role: user.role, name: user.name, department: user.department })
     res.status(201).json({ token, user })
   } catch (error: any) {
     console.error('[Register Error]', error)
-    if (error?.message?.includes('UNIQUE constraint failed')) {
+    if (error?.code === '23505' || error?.message?.includes('duplicate key')) {
       return res.status(409).json({ error: '该邮箱已被注册', code: ErrCode.EMAIL_TAKEN })
     }
     return res.status(500).json({ error: '服务器内部错误', code: ErrCode.SERVER_ERROR })
@@ -222,20 +219,19 @@ router.post('/register', (req: Request, res: Response) => {
 })
 
 // ── POST /api/auth/login ───────────────────────────
-router.post('/login', (req: Request, res: Response) => {
+router.post('/login', async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body ?? {}
     if (!email || !password) return res.status(400).json({ error: '请输入邮箱和密码' })
 
-    const user = db.prepare(
+    const user = await db.prepare(
       'SELECT id, email, password_hash, role, name, department, intern_start_date, intern_end_date FROM users WHERE email = ?'
     ).get((email as string).trim().toLowerCase()) as any
 
     if (!user) return res.status(401).json({ error: '邮箱未注册' })
     if (!bcrypt.compareSync(password, user.password_hash)) return res.status(401).json({ error: '密码错误' })
 
-    // 查询入职引导完成状态
-    const onboardingRow = db.prepare('SELECT completed_at FROM onboarding_progress WHERE user_id = ?').get(user.id) as any
+    const onboardingRow = await db.prepare('SELECT completed_at FROM onboarding_progress WHERE user_id = ?').get(user.id) as any
     delete user.password_hash
     ;(user as any).onboarding_completed = !!onboardingRow?.completed_at
 
@@ -251,12 +247,12 @@ router.post('/login', (req: Request, res: Response) => {
 // ═══════════════════════════════════════════════════
 
 // ── GET /api/auth/keys ─────────────────────────────
-router.get('/keys', authMiddleware, (req: AuthRequest, res) => {
+router.get('/keys', authMiddleware, async (req: AuthRequest, res) => {
   if (req.user?.role !== 'hr') {
     return res.status(403).json({ error: '仅 HR 可管理邀请密钥' })
   }
 
-  const keys = db.prepare(
+  const keys = await db.prepare(
     `SELECT ik.*, u.name as used_by_name, u.email as used_by_email
      FROM invite_keys ik
      LEFT JOIN users u ON ik.used_by = u.id
@@ -267,7 +263,7 @@ router.get('/keys', authMiddleware, (req: AuthRequest, res) => {
 })
 
 // ── POST /api/auth/keys ────────────────────────────
-router.post('/keys', authMiddleware, (req: AuthRequest, res) => {
+router.post('/keys', authMiddleware, async (req: AuthRequest, res) => {
   if (req.user?.role !== 'hr') {
     return res.status(403).json({ error: '仅 HR 可创建邀请密钥' })
   }
@@ -283,36 +279,36 @@ router.post('/keys', authMiddleware, (req: AuthRequest, res) => {
   const created: any[] = []
 
   const insertKey = db.prepare(
-    "INSERT INTO invite_keys (id, key_value, role, created_at) VALUES (?, ?, ?, datetime('now', 'localtime'))"
+    "INSERT INTO invite_keys (id, key_value, role, created_at) VALUES (?, ?, ?, NOW())"
   )
 
-  const tx = db.transaction(() => {
+  const tx = db.transaction(async () => {
     for (let i = 0; i < countNum; i++) {
       const suffix = Math.random().toString(36).substring(2, 8).toUpperCase()
       const keyValue = `${keyPrefix}-${suffix}`
       const id = randomUUID()
-      insertKey.run(id, keyValue, role)
+      await insertKey.run(id, keyValue, role)
       created.push({ id, key_value: keyValue, role })
     }
   })
-  tx()
+  await tx()
 
   res.status(201).json({ created, count: created.length })
 })
 
 // ── DELETE /api/auth/keys/:id ──────────────────────
-router.delete('/keys/:id', authMiddleware, (req: AuthRequest, res) => {
+router.delete('/keys/:id', authMiddleware, async (req: AuthRequest, res) => {
   if (req.user?.role !== 'hr') {
     return res.status(403).json({ error: '仅 HR 可删除邀请密钥' })
   }
 
-  const existing = db.prepare('SELECT * FROM invite_keys WHERE id = ?').get(req.params.id) as any
+  const existing = await db.prepare('SELECT * FROM invite_keys WHERE id = ?').get(req.params.id) as any
   if (!existing) return res.status(404).json({ error: '密钥不存在' })
   if (existing.used_by) {
     return res.status(400).json({ error: '该密钥已被使用，无法删除' })
   }
 
-  db.prepare('DELETE FROM invite_keys WHERE id = ?').run(req.params.id)
+  await db.prepare('DELETE FROM invite_keys WHERE id = ?').run(req.params.id)
   res.json({ success: true })
 })
 

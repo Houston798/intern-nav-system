@@ -5,23 +5,19 @@ import { authMiddleware, AuthRequest } from '../middleware/auth'
 
 const router = Router()
 
-// 所有消息接口都需要登录
 router.use(authMiddleware)
 
 /* ── 获取当前用户的联系人列表 ───────────────── */
-router.get('/contacts', (req: AuthRequest, res: Response) => {
+router.get('/contacts', async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id
   const role = req.user!.role
 
-  // 统一逻辑：默认可见用户（按角色规则） + 所有有过消息往来的用户
-  // 这样 HR 给实习生发消息后，实习生也能看到 HR
   let contacts: any[]
 
   if (role === 'intern') {
-    // 实习生：所有 mentor + 任何有过对话的用户（含 HR 等）
-    contacts = db.prepare(`
+    contacts = await db.prepare(`
       SELECT DISTINCT u.id, u.name, u.role, u.department, u.avatar_url,
-        (SELECT COUNT(*) FROM messages WHERE sender_id = u.id AND receiver_id = ? AND is_read = 0) as unread
+        (SELECT COUNT(*) FROM messages WHERE sender_id = u.id AND receiver_id = ? AND is_read = FALSE) as unread
       FROM users u
       WHERE u.id != ?
         AND (
@@ -35,10 +31,9 @@ router.get('/contacts', (req: AuthRequest, res: Response) => {
       ORDER BY CASE WHEN u.role = 'mentor' THEN 0 ELSE 1 END, u.name
     `).all(userId, userId, userId, userId) as any[]
   } else if (role === 'mentor') {
-    // 导师：所有 intern + 任何有过对话的用户
-    contacts = db.prepare(`
+    contacts = await db.prepare(`
       SELECT DISTINCT u.id, u.name, u.role, u.department, u.avatar_url,
-        (SELECT COUNT(*) FROM messages WHERE sender_id = u.id AND receiver_id = ? AND is_read = 0) as unread
+        (SELECT COUNT(*) FROM messages WHERE sender_id = u.id AND receiver_id = ? AND is_read = FALSE) as unread
       FROM users u
       WHERE u.id != ?
         AND (
@@ -52,10 +47,9 @@ router.get('/contacts', (req: AuthRequest, res: Response) => {
       ORDER BY CASE WHEN u.role = 'intern' THEN 0 ELSE 1 END, u.name
     `).all(userId, userId, userId, userId) as any[]
   } else {
-    // HR：可以看到所有人
-    contacts = db.prepare(`
+    contacts = await db.prepare(`
       SELECT DISTINCT u.id, u.name, u.role, u.department, u.avatar_url,
-        (SELECT COUNT(*) FROM messages WHERE sender_id = u.id AND receiver_id = ? AND is_read = 0) as unread
+        (SELECT COUNT(*) FROM messages WHERE sender_id = u.id AND receiver_id = ? AND is_read = FALSE) as unread
       FROM users u
       WHERE u.id != ?
       ORDER BY u.role, u.name
@@ -69,11 +63,11 @@ router.get('/contacts', (req: AuthRequest, res: Response) => {
 })
 
 /* ── 获取与某人的对话记录 ───────────────── */
-router.get('/conversation/:userId', (req: AuthRequest, res: Response) => {
+router.get('/conversation/:userId', async (req: AuthRequest, res: Response) => {
   const myId = req.user!.id
   const otherId = req.params.userId
 
-  const messages = db.prepare(`
+  const messages = await db.prepare(`
     SELECT m.*, 
       s.name as sender_name, s.role as sender_role,
       r.name as receiver_name, r.role as receiver_role
@@ -86,17 +80,16 @@ router.get('/conversation/:userId', (req: AuthRequest, res: Response) => {
     LIMIT 200
   `).all(myId, otherId, otherId, myId) as any[]
 
-  // 标记对方发来的消息为已读
-  db.prepare(`
-    UPDATE messages SET is_read = 1
-    WHERE sender_id = ? AND receiver_id = ? AND is_read = 0
+  await db.prepare(`
+    UPDATE messages SET is_read = TRUE
+    WHERE sender_id = ? AND receiver_id = ? AND is_read = FALSE
   `).run(otherId, myId)
 
   res.json(messages)
 })
 
 /* ── 发送消息 ───────────────────────────── */
-router.post('/send', (req: AuthRequest, res: Response) => {
+router.post('/send', async (req: AuthRequest, res: Response) => {
   const senderId = req.user!.id
   const { receiver_id, content } = req.body
 
@@ -107,13 +100,12 @@ router.post('/send', (req: AuthRequest, res: Response) => {
   const id = `msg_${randomUUID()}`
   const trimmedContent = content.trim()
 
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO messages (id, sender_id, receiver_id, content)
     VALUES (?, ?, ?, ?)
   `).run(id, senderId, receiver_id, trimmedContent)
 
-  // 查询刚插入的消息，联表获取发送者/接收者信息
-  const msg = db.prepare(`
+  const msg = await db.prepare(`
     SELECT m.*,
       s.name as sender_name, s.role as sender_role,
       r.name as receiver_name, r.role as receiver_role
@@ -127,12 +119,12 @@ router.post('/send', (req: AuthRequest, res: Response) => {
 })
 
 /* ── 获取未读消息总数 ──────────────────── */
-router.get('/unread-count', (req: AuthRequest, res: Response) => {
+router.get('/unread-count', async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id
 
-  const result = db.prepare(`
+  const result = await db.prepare(`
     SELECT COUNT(*) as count FROM messages
-    WHERE receiver_id = ? AND is_read = 0
+    WHERE receiver_id = ? AND is_read = FALSE
   `).get(userId) as any
 
   res.json({ count: result.count })

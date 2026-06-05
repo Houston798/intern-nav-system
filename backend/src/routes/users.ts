@@ -13,11 +13,11 @@ const USER_COLS = `id, email, name, role, department, mbti_type,
   on_leave, created_at, updated_at`
 
 // ── GET /api/users/me ──────────────────────────
-router.get('/me', authMiddleware, (req: AuthRequest, res) => {
+router.get('/me', authMiddleware, async (req: AuthRequest, res) => {
   const userId = req.user?.id
   if (!userId) return res.status(401).json({ error: '未授权' })
 
-  const user = db.prepare(
+  const user = await db.prepare(
     `SELECT ${USER_COLS} FROM users WHERE id = ?`
   ).get(userId)
 
@@ -26,31 +26,31 @@ router.get('/me', authMiddleware, (req: AuthRequest, res) => {
 })
 
 // ── GET /api/users/stats ──────────────────────
-router.get('/stats', authMiddleware, (req: AuthRequest, res) => {
+router.get('/stats', authMiddleware, async (req: AuthRequest, res) => {
   const { role } = req.user!
 
-  const total = db.prepare('SELECT COUNT(*) as count FROM users').get() as any
+  const total = await db.prepare('SELECT COUNT(*) as count FROM users').get() as any
 
-  const byRole = db.prepare(
+  const byRole = await db.prepare(
     "SELECT role, COUNT(*) as count FROM users GROUP BY role"
   ).all() as any[]
 
-  const byDept = db.prepare(
+  const byDept = await db.prepare(
     "SELECT department, COUNT(*) as count FROM users WHERE department IS NOT NULL AND department != '' GROUP BY department"
   ).all() as any[]
 
-  const weeklyNew = db.prepare(
-    "SELECT COUNT(*) as count FROM users WHERE created_at >= datetime('now', '-7 days', 'localtime')"
+  const weeklyNew = await db.prepare(
+    "SELECT COUNT(*) as count FROM users WHERE created_at >= NOW() - INTERVAL '7 days'"
   ).get() as any
 
-  const todayNew = db.prepare(
-    "SELECT COUNT(*) as count FROM users WHERE created_at >= datetime('now', 'localtime', 'start of day')"
+  const todayNew = await db.prepare(
+    "SELECT COUNT(*) as count FROM users WHERE created_at >= CURRENT_DATE"
   ).get() as any
 
   let inviteStats: any = null
   if (role === 'hr') {
-    const totalKeys = db.prepare('SELECT COUNT(*) as count FROM invite_keys').get() as any
-    const usedKeys = db.prepare('SELECT COUNT(*) as count FROM invite_keys WHERE used_by IS NOT NULL').get() as any
+    const totalKeys = await db.prepare('SELECT COUNT(*) as count FROM invite_keys').get() as any
+    const usedKeys = await db.prepare('SELECT COUNT(*) as count FROM invite_keys WHERE used_by IS NOT NULL').get() as any
     inviteStats = {
       total: totalKeys.count,
       used: usedKeys.count,
@@ -60,7 +60,7 @@ router.get('/stats', authMiddleware, (req: AuthRequest, res) => {
 
   let myInterns = 0
   if (role === 'mentor') {
-    const row = db.prepare(
+    const row = await db.prepare(
       "SELECT COUNT(*) as count FROM users WHERE role = 'intern'"
     ).get() as any
     myInterns = row.count
@@ -78,7 +78,7 @@ router.get('/stats', authMiddleware, (req: AuthRequest, res) => {
 })
 
 // ── GET /api/users ────────────────────────────
-router.get('/', authMiddleware, (req: AuthRequest, res) => {
+router.get('/', authMiddleware, async (req: AuthRequest, res) => {
   const { role } = req.user!
   const { filter, department } = req.query
 
@@ -93,7 +93,6 @@ router.get('/', authMiddleware, (req: AuthRequest, res) => {
     if (filter === 'intern' || !filter) {
       conditions.push("role = 'intern'")
     }
-    // 导师只能看同部门的实习生
     if (req.user?.department) {
       conditions.push("department = ?")
       params.push(req.user.department)
@@ -116,22 +115,21 @@ router.get('/', authMiddleware, (req: AuthRequest, res) => {
   query += ' ORDER BY name'
 
   const result = params.length > 0
-    ? db.prepare(query).all(...params)
-    : db.prepare(query).all()
+    ? await db.prepare(query).all(...params)
+    : await db.prepare(query).all()
   res.json(result)
 })
 
 // ── GET /api/users/departments ────────────────
-router.get('/departments', authMiddleware, (_req, res) => {
-  const depts = db.prepare(
+router.get('/departments', authMiddleware, async (_req, res) => {
+  const depts = await db.prepare(
     "SELECT department, COUNT(*) as count FROM users WHERE department IS NOT NULL AND department != '' GROUP BY department"
   ).all()
   res.json(depts)
 })
 
 // ── GET /api/users/mentors ─────────────────────
-// 按部门筛选导师列表（HR/导师查看）
-router.get('/mentors', authMiddleware, (req: AuthRequest, res) => {
+router.get('/mentors', authMiddleware, async (req: AuthRequest, res) => {
   const { role } = req.user!
   if (role === 'intern') {
     return res.status(403).json({ error: '实习生无权查看导师列表' })
@@ -145,28 +143,26 @@ router.get('/mentors', authMiddleware, (req: AuthRequest, res) => {
     query += ' AND department = ?'
     params.push(department as string)
   } else if (role === 'mentor' && req.user?.department) {
-    // 导师默认只看到同部门导师
     query += ' AND department = ?'
     params.push(req.user.department)
   }
 
   query += ' ORDER BY name'
   const result = params.length > 0
-    ? db.prepare(query).all(...params)
-    : db.prepare(query).all()
+    ? await db.prepare(query).all(...params)
+    : await db.prepare(query).all()
   res.json(result)
 })
 
 // ── GET /api/users/unassigned-interns ──────────
-// 获取未被导师分配的实习生列表（按部门可选）
-router.get('/unassigned-interns', authMiddleware, (req: AuthRequest, res) => {
+router.get('/unassigned-interns', authMiddleware, async (req: AuthRequest, res) => {
   const { role } = req.user!
   if (role !== 'hr' && role !== 'mentor') {
     return res.status(403).json({ error: '无权查看' })
   }
 
   const { department } = req.query
-  let conditions = ["role = 'intern'", '(mentor_id IS NULL OR mentor_id = \'\')']
+  let conditions = ["role = 'intern'", "(mentor_id IS NULL OR mentor_id = '')"]
   let params: any[] = []
 
   if (department) {
@@ -179,14 +175,13 @@ router.get('/unassigned-interns', authMiddleware, (req: AuthRequest, res) => {
 
   const query = `SELECT ${USER_COLS} FROM users WHERE ${conditions.join(' AND ')} ORDER BY name`
   const result = params.length > 0
-    ? db.prepare(query).all(...params)
-    : db.prepare(query).all()
+    ? await db.prepare(query).all(...params)
+    : await db.prepare(query).all()
   res.json(result)
 })
 
 // ── PUT /api/users/:id/bind-mentor ─────────────
-// HR/导师可将实习生绑定给自己（或指定的导师）
-router.put('/:id/bind-mentor', authMiddleware, (req: AuthRequest, res) => {
+router.put('/:id/bind-mentor', authMiddleware, async (req: AuthRequest, res) => {
   const { role } = req.user!
   if (role !== 'hr' && role !== 'mentor') {
     return res.status(403).json({ error: '无权操作' })
@@ -195,7 +190,6 @@ router.put('/:id/bind-mentor', authMiddleware, (req: AuthRequest, res) => {
   const internId = req.params.id
   const { mentorId } = req.body
 
-  // 导师只能绑定到自己（除非是HR）
   let targetMentorId: string
   if (role === 'hr') {
     if (!mentorId) return res.status(400).json({ error: '请指定导师ID' })
@@ -204,32 +198,28 @@ router.put('/:id/bind-mentor', authMiddleware, (req: AuthRequest, res) => {
     targetMentorId = req.user!.id
   }
 
-  // 验证实习生存在
-  const intern = db.prepare('SELECT id, name, role, department FROM users WHERE id = ?').get(internId) as any
+  const intern = await db.prepare('SELECT id, name, role, department FROM users WHERE id = ?').get(internId) as any
   if (!intern) return res.status(404).json({ error: '实习生不存在' })
   if (intern.role !== 'intern') return res.status(400).json({ error: '该用户不是实习生' })
 
-  // 验证导师存在且同部门
-  const mentor = db.prepare('SELECT id, name, role, department FROM users WHERE id = ? AND role = ?').get(targetMentorId, 'mentor') as any
+  const mentor = await db.prepare('SELECT id, name, role, department FROM users WHERE id = ? AND role = ?').get(targetMentorId, 'mentor') as any
   if (!mentor) return res.status(404).json({ error: '导师不存在' })
   if (mentor.department && intern.department && mentor.department !== intern.department) {
     return res.status(400).json({ error: `导师所属部门(${mentor.department})与实习生部门(${intern.department})不一致` })
   }
 
-  db.prepare("UPDATE users SET mentor_id = ?, updated_at = datetime('now') WHERE id = ?").run(targetMentorId, internId)
+  await db.prepare("UPDATE users SET mentor_id = ?, updated_at = NOW() WHERE id = ?").run(targetMentorId, internId)
 
   res.json({ success: true, message: `已将实习生「${intern.name}」分配给导师「${mentor.name}」` })
 })
 
 // ── PUT /api/users/:id ─────────────────────────
-// 导师可修改实习生的实习时间，HR 可修改所有用户信息
-router.put('/:id', authMiddleware, (req: AuthRequest, res) => {
+router.put('/:id', authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { role } = req.user!
     const targetId = req.params.id
 
-    // 查找目标用户
-    const target = db.prepare(
+    const target = await db.prepare(
       `SELECT id, role, name FROM users WHERE id = ?`
     ).get(targetId) as any
 
@@ -237,17 +227,14 @@ router.put('/:id', authMiddleware, (req: AuthRequest, res) => {
       return res.status(404).json({ error: '用户不存在' })
     }
 
-    // 权限检查
     if (role === 'intern') {
       return res.status(403).json({ error: '实习生无权修改用户信息' })
     }
 
     if (role === 'mentor') {
-      // 导师只能修改实习生信息
       if (target.role !== 'intern') {
         return res.status(403).json({ error: '导师仅能修改实习生信息' })
       }
-      // 导师只能修改 intern_start_date、intern_end_date
       const allowed = ['internStartDate', 'internEndDate']
       const bodyKeys = Object.keys(req.body)
       const disallowed = bodyKeys.filter(k => !allowed.includes(k) && k !== 'intern_start_date' && k !== 'intern_end_date')
@@ -256,11 +243,9 @@ router.put('/:id', authMiddleware, (req: AuthRequest, res) => {
       }
     }
 
-    // 收集要更新的字段
     const updates: string[] = []
     const values: any[] = []
 
-    // HR 可更新: name, email, department, mbti_type, intern_type, intern_start_date, intern_end_date
     if (role === 'hr') {
       if (req.body.name !== undefined) {
         const n = String(req.body.name).trim()
@@ -275,8 +260,7 @@ router.put('/:id', authMiddleware, (req: AuthRequest, res) => {
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
           return res.status(400).json({ error: '邮箱格式不正确' })
         }
-        // 检查邮箱是否被其他用户占用
-        const dup = db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(em, targetId) as any
+        const dup = await db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(em, targetId) as any
         if (dup) {
           return res.status(409).json({ error: '该邮箱已被其他用户使用' })
         }
@@ -302,7 +286,6 @@ router.put('/:id', authMiddleware, (req: AuthRequest, res) => {
       }
     }
 
-    // 导师和 HR 都可修改实习时间
     if (req.body.intern_start_date !== undefined || req.body.internStartDate !== undefined) {
       const start = (req.body.intern_start_date || req.body.internStartDate || '').trim()
       if (start && !/^\d{4}-\d{2}-\d{2}$/.test(start)) {
@@ -330,19 +313,19 @@ router.put('/:id', authMiddleware, (req: AuthRequest, res) => {
       return res.status(400).json({ error: '没有需要更新的字段' })
     }
 
-    updates.push("updated_at = datetime('now')")
+    updates.push("updated_at = NOW()")
     values.push(targetId)
 
-    db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values)
+    await db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values)
 
-    const updated = db.prepare(
+    const updated = await db.prepare(
       `SELECT ${USER_COLS} FROM users WHERE id = ?`
     ).get(targetId)
 
     res.json({ success: true, user: updated })
   } catch (error: any) {
     console.error('[Update User Error]', error)
-    if (error?.message?.includes('UNIQUE constraint failed')) {
+    if (error?.code === '23505' || error?.message?.includes('duplicate key')) {
       return res.status(409).json({ error: '邮箱已被使用' })
     }
     return res.status(500).json({ error: '服务器内部错误' })
@@ -350,8 +333,7 @@ router.put('/:id', authMiddleware, (req: AuthRequest, res) => {
 })
 
 // ── DELETE /api/users/:id ──────────────────────
-// 仅 HR 可删除用户（同时清理关联数据）
-router.delete('/:id', authMiddleware, (req: AuthRequest, res) => {
+router.delete('/:id', authMiddleware, async (req: AuthRequest, res) => {
   try {
     const { role, id: selfId } = req.user!
 
@@ -361,43 +343,31 @@ router.delete('/:id', authMiddleware, (req: AuthRequest, res) => {
 
     const targetId = req.params.id
 
-    // 不能删除自己
     if (targetId === selfId) {
       return res.status(400).json({ error: '不能删除自己的账户' })
     }
 
-    const target = db.prepare('SELECT id, name, role FROM users WHERE id = ?').get(targetId) as any
+    const target = await db.prepare('SELECT id, name, role FROM users WHERE id = ?').get(targetId) as any
     if (!target) {
       return res.status(404).json({ error: '用户不存在' })
     }
 
-    // 在事务中清理所有关联数据
-    const transaction = db.transaction(() => {
-      // 释放该用户使用的邀请密钥
-      db.prepare('UPDATE invite_keys SET used_by = NULL, used_at = NULL WHERE used_by = ?').run(targetId)
-      // 删除用户技能记录
-      db.prepare('DELETE FROM user_skills WHERE user_id = ?').run(targetId)
-      // 将该用户创建的任务的 created_by 置空
-      db.prepare('UPDATE tasks SET created_by = NULL WHERE created_by = ?').run(targetId)
-      // 删除分配给该用户的任务
-      db.prepare('DELETE FROM tasks WHERE assigned_to = ?').run(targetId)
-      // 删除入职引导进度
-      db.prepare('DELETE FROM onboarding_progress WHERE user_id = ?').run(targetId)
-      // 删除 AI 对话记录
-      db.prepare('DELETE FROM ai_conversations WHERE user_id = ?').run(targetId)
-      // 删除通知
-      db.prepare('DELETE FROM notifications WHERE user_id = ?').run(targetId)
-      // 删除留言
-      db.prepare('DELETE FROM messages WHERE sender_id = ? OR receiver_id = ?').run(targetId, targetId)
-      // 如果该用户是导师，清除实习生的 mentor_id 引用
+    const transaction = db.transaction(async () => {
+      await db.prepare('UPDATE invite_keys SET used_by = NULL, used_at = NULL WHERE used_by = ?').run(targetId)
+      await db.prepare('DELETE FROM user_skills WHERE user_id = ?').run(targetId)
+      await db.prepare('UPDATE tasks SET created_by = NULL WHERE created_by = ?').run(targetId)
+      await db.prepare('DELETE FROM tasks WHERE assigned_to = ?').run(targetId)
+      await db.prepare('DELETE FROM onboarding_progress WHERE user_id = ?').run(targetId)
+      await db.prepare('DELETE FROM ai_conversations WHERE user_id = ?').run(targetId)
+      await db.prepare('DELETE FROM notifications WHERE user_id = ?').run(targetId)
+      await db.prepare('DELETE FROM messages WHERE sender_id = ? OR receiver_id = ?').run(targetId, targetId)
       if (target.role === 'mentor') {
-        db.prepare('UPDATE users SET mentor_id = NULL WHERE mentor_id = ?').run(targetId)
+        await db.prepare('UPDATE users SET mentor_id = NULL WHERE mentor_id = ?').run(targetId)
       }
-      // 最后删除用户
-      db.prepare('DELETE FROM users WHERE id = ?').run(targetId)
+      await db.prepare('DELETE FROM users WHERE id = ?').run(targetId)
     })
 
-    transaction()
+    await transaction()
 
     console.log(`[User Deleted] ${target.name} (${target.role}) deleted by HR`)
     res.json({
