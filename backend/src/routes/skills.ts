@@ -577,7 +577,7 @@ router.post('/publish-tasks', authMiddleware, async (req: AuthRequest, res: Resp
 
       if (skills.length === 0) return res.status(404).json({ error: '未找到任何有效技能节点' })
 
-      const validSkills = []
+      const validSkills: any[] = []
       for (const s of skills) {
         const childRow = await db.prepare('SELECT COUNT(*) as cnt FROM skills WHERE parent_id = ?').get(s.id) as any
         if ((childRow?.cnt || 0) === 0) validSkills.push(s)
@@ -641,7 +641,7 @@ router.post('/publish-tasks', authMiddleware, async (req: AuthRequest, res: Resp
 
     if (skills2.length === 0) return res.status(404).json({ error: '未找到任何有效技能节点' })
 
-    const validSkills2 = []
+    const validSkills2: any[] = []
     for (const s of skills2) {
       const childRow = await db.prepare('SELECT COUNT(*) as cnt FROM skills WHERE parent_id = ?').get(s.id) as any
       if ((childRow?.cnt || 0) === 0) validSkills2.push(s)
