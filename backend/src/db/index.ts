@@ -1,3 +1,4 @@
+// @ts-ignore - postgres.js 自带类型但 TS 可能找不到
 import postgres from 'postgres'
 import dotenv from 'dotenv'
 
@@ -78,7 +79,7 @@ export const db = {
 
   transaction<T extends (...args: any[]) => any>(fn: T): () => Promise<ReturnType<T>> {
     return async () => {
-      return await sql.begin(async (tx) => {
+      return await sql.begin(async (tx: any) => {
         const prevTx = currentTx
         currentTx = tx
         try {

@@ -1,0 +1,6 @@
+﻿src/db/index.ts(1,22): error TS2307: Cannot find module 'postgres' or its corresponding type declarations.
+src/db/index.ts(81,37): error TS7006: Parameter 'tx' implicitly has an 'any' type.
+src/routes/skills.ts(580,13): error TS7034: Variable 'validSkills' implicitly has type 'any[]' in some locations where its type cannot be determined.
+src/routes/skills.ts(599,29): error TS7005: Variable 'validSkills' implicitly has an 'any[]' type.
+src/routes/skills.ts(644,11): error TS7034: Variable 'validSkills2' implicitly has type 'any[]' in some locations where its type cannot be determined.
+src/routes/skills.ts(679,27): error TS7005: Variable 'validSkills2' implicitly has an 'any[]' type.
