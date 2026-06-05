@@ -78,7 +78,7 @@ export const db = {
 
   transaction<T extends (...args: any[]) => any>(fn: T): () => Promise<ReturnType<T>> {
     return async () => {
-      return await sql.begin(async (tx) => {
+      return await sql.begin(async (tx: any) => {
         const prevTx = currentTx
         currentTx = tx
         try {
