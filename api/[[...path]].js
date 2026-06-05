@@ -14,7 +14,7 @@ process.env.NODE_ENV = 'production'
 // Vercel 会把 /api/xxx 请求路由到本函数，但 req.url 会去掉 /api 前缀
 // 例如请求 /api/auth/register → req.url = /auth/register
 // 而 Express 路由挂载在 /api/auth，所以需要补回 /api 前缀
-const app = require('../backend/dist/app').default
+const app = require('./backend-dist/app').default
 
 module.exports = (req, res) => {
   // 补回 /api 前缀，让 Express 路由能正确匹配
