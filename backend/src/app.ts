@@ -46,36 +46,23 @@ app.use(cors({
 app.use(morgan('dev'))
 app.use(express.json())
 
-app.use('/api/auth', authRouter)
-app.use('/api/users', usersRouter)
-app.use('/api/tasks', tasksRouter)
-app.use('/api/skills', skillsRouter)
-app.use('/api/notifications', notificationsRouter)
-app.use('/api/ai', aiRouter)
-app.use('/api/onboarding', onboardingRouter)
-app.use('/api/messages', messagesRouter)
-app.use('/api/mentor-tasks', mentorTasksRouter)
-app.use('/api/department-tasks', departmentTasksRouter)
-app.use('/api/user-skill-tasks', userSkillTasksRouter)
-app.get('/api/health', (_, res) => res.json({ status: 'ok' }))
-app.get('/', (_, res) => res.json({ status: 'intern-nav backend', docs: '/api' }))
+// Vercel serverless: 请求路径已去掉 /api 前缀
+// 本地开发: 通过 vite proxy 或直接访问 localhost:3001/api/...
+const API_PREFIX = process.env.VERCEL ? '' : '/api'
 
-// 调试：404 处理器，显示收到的请求信息（临时返回200方便调试）
-app.use((req: any, res) => {
-  res.status(200).json({
-    debug: 'ROUTE_NOT_MATCHED',
-    method: req.method,
-    url: req.url,
-    originalUrl: req.originalUrl,
-    path: req.path,
-    debugOriginal: req._debugOriginalUrl || 'N/A',
-    routes: app._router?.stack?.filter((r: any) => r.route).map((r: any) => ({
-      path: r.route.path,
-      methods: Object.keys(r.route.methods)
-    })) || 'N/A',
-    middleware: app._router?.stack?.filter((r: any) => !r.route && r.regexp).map((r: any) => r.regexp.toString()).slice(0, 15) || 'N/A'
-  })
-})
+app.use(`${API_PREFIX}/auth`, authRouter)
+app.use(`${API_PREFIX}/users`, usersRouter)
+app.use(`${API_PREFIX}/tasks`, tasksRouter)
+app.use(`${API_PREFIX}/skills`, skillsRouter)
+app.use(`${API_PREFIX}/notifications`, notificationsRouter)
+app.use(`${API_PREFIX}/ai`, aiRouter)
+app.use(`${API_PREFIX}/onboarding`, onboardingRouter)
+app.use(`${API_PREFIX}/messages`, messagesRouter)
+app.use(`${API_PREFIX}/mentor-tasks`, mentorTasksRouter)
+app.use(`${API_PREFIX}/department-tasks`, departmentTasksRouter)
+app.use(`${API_PREFIX}/user-skill-tasks`, userSkillTasksRouter)
+app.get(`${API_PREFIX}/health`, (_, res) => res.json({ status: 'ok' }))
+app.get('/', (_, res) => res.json({ status: 'intern-nav backend', docs: '/api' }))
 
 const PORT = process.env.PORT || 3001
 

@@ -6,6 +6,7 @@ if (!process.env.JWT_SECRET) {
   process.env.JWT_SECRET = '8573e1b5db53b8a6fd6328d1e6020a8dabdde239c052e6db32434520c687fdc4'
 }
 process.env.NODE_ENV = 'production'
+process.env.VERCEL = '1'
 
 let app
 let loadError = null
@@ -16,9 +17,6 @@ try {
 }
 
 module.exports = (req, res) => {
-  // 调试：记录原始请求
-  console.log(`[API] ${req.method} ${req.url} headers=${JSON.stringify(req.headers)}`)
-
   if (loadError) {
     return res.status(500).json({
       error: 'Failed to load Express app',
@@ -27,15 +25,15 @@ module.exports = (req, res) => {
     })
   }
 
-  // 补回 /api 前缀
-  const originalUrl = req.url
-  if (!req.url.startsWith('/api')) {
-    req.url = '/api' + req.url
+  // Vercel catch-all 路由: req.url 可能是以下格式之一:
+  //   /auth/register        (去掉 /api 前缀)
+  //   /api/auth/register    (保留完整路径)
+  // 统一去掉 /api 前缀，因为 Express 在 VERCEL 模式下不挂 /api 前缀
+  if (req.url.startsWith('/api/')) {
+    req.url = req.url.slice(4) // 去掉 /api → /auth/register
+  } else if (req.url === '/api') {
+    req.url = '/'
   }
-  console.log(`[API] rewritten: ${originalUrl} → ${req.url}`)
-
-  // 注入调试中间件
-  req._debugOriginalUrl = originalUrl
 
   return app(req, res)
 }
