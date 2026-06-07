@@ -60,8 +60,8 @@ function Home() {
     }
 
     Promise.all(fetchers).then(([uRes, tRes, nRes]) => {
-      const us = uRes?.data || {}
-      const ts = (tRes?.data) || {}
+      const us = (uRes?.data && typeof uRes.data === 'object' && !uRes.data.code) ? uRes.data : {}
+      const ts = (tRes?.data && typeof tRes.data === 'object' && !tRes.data.code) ? tRes.data : {}
       const notifs: any[] = Array.isArray(nRes?.data) ? nRes.data : []
 
       let stats: LiveStat[] = []

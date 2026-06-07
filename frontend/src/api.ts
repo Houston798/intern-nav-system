@@ -27,13 +27,21 @@ api.interceptors.request.use(config => {
 // ── 响应拦截 ────────────────────────────────────────
 api.interceptors.response.use(
   response => response,
-  (error: AxiosError<{ error?: string; code?: string; fields?: string[] }>) => {
+  (error: AxiosError<any>) => {
+    // 将 Vercel/非标准错误格式统一为 { error, code }
+    if (error.response?.data && typeof error.response.data === 'object') {
+      const d = error.response.data
+      if (!d.error && d.message) {
+        // Vercel 返回 { code, message } → 转为 { error, code }
+        d.error = d.message
+      }
+    }
+
     // 401 自动登出
     if (error.response?.status === 401) {
       const stored = localStorage.getItem('intern_nav_auth')
       if (stored) {
         localStorage.removeItem('intern_nav_auth')
-        // 避免在登录/注册页面触发循环跳转
         if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
           window.location.href = '/login?expired=1'
         }
