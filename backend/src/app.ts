@@ -60,15 +60,20 @@ app.use('/api/user-skill-tasks', userSkillTasksRouter)
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }))
 app.get('/', (_, res) => res.json({ status: 'intern-nav backend', docs: '/api' }))
 
-// 调试：404 处理器，显示收到的请求信息
+// 调试：404 处理器，显示收到的请求信息（临时返回200方便调试）
 app.use((req: any, res) => {
-  res.status(404).json({
-    error: 'Not Found',
+  res.status(200).json({
+    debug: 'ROUTE_NOT_MATCHED',
     method: req.method,
     url: req.url,
     originalUrl: req.originalUrl,
     path: req.path,
-    debug: req._debugOriginalUrl || 'N/A'
+    debugOriginal: req._debugOriginalUrl || 'N/A',
+    routes: app._router?.stack?.filter((r: any) => r.route).map((r: any) => ({
+      path: r.route.path,
+      methods: Object.keys(r.route.methods)
+    })) || 'N/A',
+    middleware: app._router?.stack?.filter((r: any) => !r.route && r.regexp).map((r: any) => r.regexp.toString()).slice(0, 15) || 'N/A'
   })
 })
 
