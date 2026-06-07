@@ -6,7 +6,6 @@
   "functions": {
     "api/[[...path]].js": {
       "maxDuration": 10,
-      "includeFiles": "backend/dist/**",
       "runtime": "nodejs18.x"
     }
   },

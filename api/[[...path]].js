@@ -10,8 +10,8 @@ if (!process.env.JWT_SECRET) {
 }
 process.env.NODE_ENV = 'production'
 
-// ── 加载 Express 应用 ──
-const app = require('../backend/dist/app').default
+// ── 加载 Express 应用（从 api/dist 目录读取编译后的代码） ──
+const app = require('./dist/app').default
 
 // Vercel catch-all 路由会去掉 /api 前缀，需要补回
 module.exports = (req, res) => {
