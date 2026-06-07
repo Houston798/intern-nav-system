@@ -61,7 +61,7 @@ app.get('/api/health', (_, res) => res.json({ status: 'ok' }))
 app.get('/', (_, res) => res.json({ status: 'intern-nav backend', docs: '/api' }))
 
 // 调试：404 处理器，显示收到的请求信息
-app.use((req, res) => {
+app.use((req: any, res) => {
   res.status(404).json({
     error: 'Not Found',
     method: req.method,
