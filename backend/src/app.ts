@@ -60,6 +60,18 @@ app.use('/api/user-skill-tasks', userSkillTasksRouter)
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }))
 app.get('/', (_, res) => res.json({ status: 'intern-nav backend', docs: '/api' }))
 
+// 调试：404 处理器，显示收到的请求信息
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'Not Found',
+    method: req.method,
+    url: req.url,
+    originalUrl: req.originalUrl,
+    path: req.path,
+    debug: req._debugOriginalUrl || 'N/A'
+  })
+})
+
 const PORT = process.env.PORT || 3001
 
 // 仅当直接运行时启动监听（start.ts 会自己调用 listen）
