@@ -1,15 +1,11 @@
 {
-  "buildCommand": "npm run vercel-build",
-  "outputDirectory": "frontend/dist",
-  "installCommand": "npm install",
-  "framework": null,
-  "functions": {
-    "api/[[...path]].js": {
-      "maxDuration": 10,
-      "runtime": "nodejs18.x"
-    }
-  },
-  "rewrites": [
-    { "source": "/((?!api/|assets/|favicon\\.svg|\\.css|\\.js|\\.png|\\.jpg|\\.ico).*)", "destination": "/index.html" }
+  "builds": [
+    { "src": "api/**/*.js", "use": "@vercel/node" },
+    { "src": "package.json", "use": "@vercel/static-build", "config": { "outputDirectory": "frontend/dist" } }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/$1" },
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
