@@ -3,8 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "build": "cd backend && npm install && npx tsc && cd .. && rm -rf api/dist && cp -r backend/dist api/dist && cd frontend && npm install && npx vite build",
-    "vercel-build": "npm run build"
+    "build": "cd backend && npm install && npx tsc && cd .. && rm -rf api/dist && cp -r backend/dist api/dist && cd frontend && npm install && npx vite build"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
